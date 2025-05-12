@@ -1,0 +1,1553 @@
+[
+  {
+    "name": "Client Intake Workflow",
+    "nodes": [
+      {
+        "parameters": {
+          "formTitle": "Formulaire d'Admission Client",
+          "formDescription": "Veuillez fournir vos informations pour commencer votre dossier.",
+          "fields": [
+            {
+              "label": "Nom Complet",
+              "elementType": "text",
+              "requiredField": true
+            },
+            {
+              "label": "Email",
+              "elementType": "email",
+              "requiredField": true
+            },
+            {
+              "label": "Numéro de Téléphone",
+              "elementType": "text",
+              "requiredField": true
+            },
+            {
+              "label": "Type de Dossier",
+              "elementType": "dropdown",
+              "options": ["Droit de la Famille", "Droit Pénal", "Droit des Sociétés", "Autre"],
+              "requiredField": true
+            },
+            {
+              "label": "Description du Dossier",
+              "elementType": "textarea",
+              "requiredField": true
+            }
+          ],
+          "respondWhen": "formIsSubmitted",
+          "formResponseMode": "formSubmittedText",
+          "formSubmittedText": "Merci pour votre soumission ! Nous vous contacterons bientôt."
+        },
+        "id": "form_trigger",
+        "name": "Formulaire d'Admission",
+        "type": "n8n-nodes-base.formTrigger",
+        "typeVersion": 1,
+        "position": [200, 300]
+      },
+      {
+        "parameters": {
+          "path": "whatsapp-intake",
+          "httpMethod": "POST",
+          "respondTo": "lastNode",
+          "responseCode": 200,
+          "responseData": "Webhook reçu"
+        },
+        "id": "whatsapp_trigger",
+        "name": "Webhook WhatsApp",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 1,
+        "position": [200, 500],
+        "credentials": {
+          "webhook": {
+            "id": "{{evolutionApiCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "content": "Ce nœud documente le processus d'admission. Le flux gère les soumissions de formulaires et les messages WhatsApp. Les données du formulaire sont traitées pour le CRM et l'intégration, tandis que les messages WhatsApp sont classés par un agent IA."
+        },
+        "id": "sticky_note_1",
+        "name": "Note Processus Admission",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [150, 100]
+      },
+      {
+        "parameters": {
+          "operation": "create",
+          "firstName": "{{$node['Formulaire d'Admission'].json['Nom Complet'].split(' ')[0]}}",
+          "lastName": "{{$node['Formulaire d'Admission'].json['Nom Complet'].split(' ').slice(1).join(' ')}}",
+          "email": "{{$node['Formulaire d'Admission'].json['Email']}}",
+          "phone": "{{$node['Formulaire d'Admission'].json['Numéro de Téléphone']}}",
+          "title": "{{$node['Formulaire d'Admission'].json['Type de Dossier']}}",
+          "description": "{{$node['Formulaire d'Admission'].json['Description du Dossier']}}"
+        },
+        "id": "pipedrive_crm",
+        "name": "Ajouter à Pipedrive",
+        "type": "n8n-nodes-base.pipedrive",
+        "typeVersion": 1,
+        "position": [400, 300],
+        "credentials": {
+          "pipedriveApi": {
+            "id": "{{pipedriveCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "create",
+          "baseId": "your_airtable_base_id",
+          "tableName": "Clients",
+          "fields": {
+            "Nom": "{{$node['Formulaire d'Admission'].json['Nom Complet']}}",
+            "Email": "{{$node['Formulaire d'Admission'].json['Email']}}",
+            "Téléphone": "{{$node['Formulaire d'Admission'].json['Numéro de Téléphone']}}",
+            "Type de Dossier": "{{$node['Formulaire d'Admission'].json['Type de Dossier']}}",
+            "Description du Dossier": "{{$node['Formulaire d'Admission'].json['Description du Dossier']}}"
+          }
+        },
+        "id": "airtable",
+        "name": "Ajouter à Airtable",
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 1,
+        "position": [600, 300],
+        "credentials": {
+          "airtableApi": {
+            "id": "{{airtableCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "createFolder",
+          "name": "{{$node['Formulaire d'Admission'].json['Nom Complet'] + ' - ' + $node['Formulaire d'Admission'].json['Type de Dossier']}}",
+          "parentFolderId": "your_google_drive_parent_folder_id"
+        },
+        "id": "google_drive",
+        "name": "Créer Dossier Google Drive",
+        "type": "n8n-nodes-base.googleDrive",
+        "typeVersion": 1,
+        "position": [800, 300],
+        "credentials": {
+          "googleDriveOAuth2Api": {
+            "id": "{{googleDriveCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "create",
+          "calendarId": "primary",
+          "summary": "Consultation Initiale - {{$node['Formulaire d'Admission'].json['Nom Complet']}}",
+          "description": "{{$node['Formulaire d'Admission'].json['Description du Dossier']}}",
+          "startDateTime": "{{new Date(Date.now() + 24*60*60*1000).toISOString()}}",
+          "endDateTime": "{{new Date(Date.now() + 25*60*60*1000).toISOString()}}",
+          "attendees": "{{$node['Formulaire d'Admission'].json['Email']}}",
+          "conferenceData": {
+            "createRequest": {
+              "requestId": "{{$node['Formulaire d'Admission'].json['Nom Complet'] + '-' + Date.now()}}",
+              "conferenceSolutionKey": {
+                "type": "hangoutsMeet"
+              }
+            }
+          }
+        },
+        "id": "google_calendar",
+        "name": "Planifier Événement Google Calendar",
+        "type": "n8n-nodes-base.googleCalendar",
+        "typeVersion": 1,
+        "position": [1000, 300],
+        "credentials": {
+          "googleCalendarOAuth2Api": {
+            "id": "{{googleCalendarCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "fromEmail": "cabinet@avocat.com",
+          "toEmail": "{{$node['Formulaire d'Admission'].json['Email']}}",
+          "subject": "Confirmation : Votre Consultation Initiale",
+          "emailFormat": "html",
+          "html": "<p>Cher {{$node['Formulaire d'Admission'].json['Nom Complet']}},</p><p>Votre consultation initiale a été planifiée pour {{$node['Planifier Événement Google Calendar'].json['startDateTime']}}. Veuillez rejoindre la réunion en utilisant ce lien : {{$node['Planifier Événement Google Calendar'].json['hangoutsLink']}}.</p><p>Cordialement,<br>Votre Cabinet d'Avocat</p>"
+        },
+        "id": "gmail_confirm",
+        "name": "Envoyer Confirmation Gmail",
+        "type": "n8n-nodes-base.sendEmail",
+        "typeVersion": 1,
+        "position": [1200, 300],
+        "credentials": {
+          "smtpApi": {
+            "id": "{{smtpCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "resource": "text",
+          "operation": "complete",
+          "model": "chatgpt-4o-latest",
+          "prompt": "Vous êtes un assistant juridique pour un cabinet d'avocat. Analysez le message WhatsApp entrant : {{$node['Webhook WhatsApp'].json['message']}}. Classez le lead selon : 1) Type de dossier (ex. Droit de la Famille, Droit Pénal, Droit des Sociétés, Autre), 2) Viabilité (Élevée, Moyenne, Faible), 3) Urgence (Urgent, Non-Urgent). Fournissez la sortie au format JSON avec les champs : case_type, viability, urgency, client_name, client_phone, case_description.",
+          "temperature": 0.1,
+          "responseFormat": "json_object"
+        },
+        "id": "ai_agent_whatsapp",
+        "name": "Classification IA WhatsApp",
+        "type": "n8n-nodes-base.openAI",
+        "typeVersion": 1,
+        "position": [400, 500],
+        "credentials": {
+          "openAIApi": {
+            "id": "{{openAICredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "insert",
+          "schema": "public",
+          "table": "leads",
+          "columns": {
+            "case_type": "{{$node['Classification IA WhatsApp'].json['case_type']}}",
+            "viability": "{{$node['Classification IA WhatsApp'].json['viability']}}",
+            "urgency": "{{$node['Classification IA WhatsApp'].json['urgency']}}",
+            "client_name": "{{$node['Classification IA WhatsApp'].json['client_name']}}",
+            "client_phone": "{{$node['Classification IA WhatsApp'].json['client_phone']}}",
+            "case_description": "{{$node['Classification IA WhatsApp'].json['case_description']}}"
+          }
+        },
+        "id": "supabase",
+        "name": "Stocker Lead dans Supabase",
+        "type": "n8n-nodes-base.supabase",
+        "typeVersion": 1,
+        "position": [600, 500],
+        "credentials": {
+          "supabaseApi": {
+            "id": "{{supabaseCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "string": [
+              {
+                "value1": "{{$node['Classification IA WhatsApp'].json['viability']}}",
+                "operation": "isEqual",
+                "value2": "Élevée"
+              }
+            ]
+          }
+        },
+        "id": "if_viable",
+        "name": "Vérifier Viabilité Lead",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 1,
+        "position": [800, 500]
+      },
+      {
+        "parameters": {
+          "operation": "sendMessage",
+          "chatId": "lawyer_telegram_chat_id",
+          "message": "Nouveau lead viable : {{$node['Classification IA WhatsApp'].json['client_name']}} ({{$node['Classification IA WhatsApp'].json['case_type']}}). Urgence : {{$node['Classification IA WhatsApp'].json['urgency']}}. Description : {{$node['Classification IA WhatsApp'].json['case_description']}}."
+        },
+        "id": "telegram_notify",
+        "name": "Notifier Avocat via Telegram",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1,
+        "position": [1000, 400],
+        "credentials": {
+          "telegramApi": {
+            "id": "{{telegramCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "{\"status\": \"success\"}",
+          "responseCode": 200
+        },
+        "id": "respond_webhook",
+        "name": "Répondre Webhook WhatsApp",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1,
+        "position": [1200, 500]
+      }
+    ],
+    "connections": {
+      "Formulaire d'Admission": {
+        "main": [[{"node": "Ajouter à Pipedrive", "type": "main", "index": 0}]]
+      },
+      "Webhook WhatsApp": {
+        "main": [[{"node": "Classification IA WhatsApp", "type": "main", "index": 0}]]
+      },
+      "Ajouter à Pipedrive": {
+        "main": [[{"node": "Ajouter à Airtable", "type": "main", "index": 0}]]
+      },
+      "Ajouter à Airtable": {
+        "main": [[{"node": "Créer Dossier Google Drive", "type": "main", "index": 0}]]
+      },
+      "Créer Dossier Google Drive": {
+        "main": [[{"node": "Planifier Événement Google Calendar", "type": "main", "index": 0}]]
+      },
+      "Planifier Événement Google Calendar": {
+        "main": [[{"node": "Envoyer Confirmation Gmail", "type": "main", "index": 0}]]
+      },
+      "Classification IA WhatsApp": {
+        "main": [[{"node": "Stocker Lead dans Supabase", "type": "main", "index": 0}]]
+      },
+      "Stocker Lead dans Supabase": {
+        "main": [[{"node": "Vérifier Viabilité Lead", "type": "main", "index": 0}]]
+      },
+      "Vérifier Viabilité Lead": {
+        "main": [
+          [{"node": "Notifier Avocat via Telegram", "type": "main", "index": 0}],
+          [{"node": "Répondre Webhook WhatsApp", "type": "main", "index": 0}]
+        ]
+      },
+      "Notifier Avocat via Telegram": {
+        "main": [[{"node": "Répondre Webhook WhatsApp", "type": "main", "index": 0}]]
+      }
+    },
+    "settings": {
+      "timezone": "Europe/Paris",
+      "errorWorkflow": "error_workflow_id"
+    }
+  },
+  {
+    "name": "Calendar Management Workflow",
+    "nodes": [
+      {
+        "parameters": {
+          "path": "telegram-calendar",
+          "httpMethod": "POST",
+          "respondTo": "lastNode",
+          "responseCode": 200,
+          "responseData": "Webhook reçu"
+        },
+        "id": "telegram_trigger",
+        "name": "Webhook Telegram",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 1,
+        "position": [200, 300],
+        "credentials": {
+          "webhook": {
+            "id": "{{telegramWebhookCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "content": "Ce flux gère la planification via Telegram. Un agent IA interprète les demandes en langage naturel, met à jour Google Calendar, envoie des alertes Slack et génère des notes/tâches."
+        },
+        "id": "sticky_note_calendar",
+        "name": "Note Gestion Calendrier",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [150, 100]
+      },
+      {
+        "parameters": {
+          "resource": "text",
+          "operation": "complete",
+          "model": "chatgpt-4o-latest",
+          "prompt": "Vous êtes un assistant de planification pour un cabinet d'avocat. Analysez la demande Telegram : {{$node['Webhook Telegram'].json['message']}}. Identifiez l'action (créer, modifier, supprimer un événement), les détails (date, heure, client, description), et fournissez une réponse JSON avec les champs : action, event_summary, start_datetime, end_datetime, client_email, description.",
+          "temperature": 0.1,
+          "responseFormat": "json_object"
+        },
+        "id": "ai_calendar",
+        "name": "Agent IA Calendrier",
+        "type": "n8n-nodes-base.openAI",
+        "typeVersion": 1,
+        "position": [400, 300],
+        "credentials": {
+          "openAIApi": {
+            "id": "{{openAICredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "{{$node['Agent IA Calendrier'].json['action']}}",
+          "calendarId": "primary",
+          "summary": "{{$node['Agent IA Calendrier'].json['event_summary']}}",
+          "description": "{{$node['Agent IA Calendrier'].json['description']}}",
+          "startDateTime": "{{$node['Agent IA Calendrier'].json['start_datetime']}}",
+          "endDateTime": "{{$node['Agent IA Calendrier'].json['end_datetime']}}",
+          "attendees": "{{$node['Agent IA Calendrier'].json['client_email']}}",
+          "conferenceData": {
+            "createRequest": {
+              "requestId": "{{$node['Agent IA Calendrier'].json['event_summary'] + '-' + Date.now()}}",
+              "conferenceSolutionKey": {
+                "type": "hangoutsMeet"
+              }
+            }
+          }
+        },
+        "id": "update_calendar",
+        "name": "Mettre à Jour Google Calendar",
+        "type": "n8n-nodes-base.googleCalendar",
+        "typeVersion": 1,
+        "position": [600, 300],
+        "credentials": {
+          "googleCalendarOAuth2Api": {
+            "id": "{{googleCalendarCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "channel": "law-firm-channel",
+          "text": "Événement calendrier mis à jour : {{$node['Agent IA Calendrier'].json['event_summary']}} pour {{$node['Agent IA Calendrier'].json['client_email']}} le {{$node['Agent IA Calendrier'].json['start_datetime']}}."
+        },
+        "id": "slack_alert",
+        "name": "Alerte Slack",
+        "type": "n8n-nodes-base.slack",
+        "typeVersion": 1,
+        "position": [800, 300],
+        "credentials": {
+          "slackApi": {
+            "id": "{{slackCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "resource": "text",
+          "operation": "complete",
+          "model": "o1-mini",
+          "prompt": "Analysez l'événement calendrier : {{$node['Mettre à Jour Google Calendar'].json}}. Générez une note concise pour le calendrier et une liste de tâches en JSON : { \"note\": \"\", \"tasks\": [{ \"description\": \"\", \"due_date\": \"\" }] }.",
+          "temperature": 0.1,
+          "responseFormat": "json_object"
+        },
+        "id": "ai_notes_tasks",
+        "name": "Générer Notes et Tâches",
+        "type": "n8n-nodes-base.openAI",
+        "typeVersion": 1,
+        "position": [1000, 300],
+        "credentials": {
+          "openAIApi": {
+            "id": "{{openAICredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "update",
+          "calendarId": "primary",
+          "eventId": "{{$node['Mettre à Jour Google Calendar'].json['id']}}",
+          "description": "{{$node['Générer Notes et Tâches'].json['note']}}"
+        },
+        "id": "update_calendar_note",
+        "name": "Mettre à Jour Note Calendrier",
+        "type": "n8n-nodes-base.googleCalendar",
+        "typeVersion": 1,
+        "position": [1200, 300],
+        "credentials": {
+          "googleCalendarOAuth2Api": {
+            "id": "{{googleCalendarCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "create",
+          "databaseId": "your_notion_database_id",
+          "properties": {
+            "Tâche": "{{$node['Générer Notes et Tâches'].json['tasks'].map(t => t.description).join(', ')}}",
+            "Date d'Échéance": "{{$node['Générer Notes et Tâches'].json['tasks'][0].due_date}}"
+          }
+        },
+        "id": "notion_tasks",
+        "name": "Ajouter Tâches à Notion",
+        "type": "n8n-nodes-base.notion",
+        "typeVersion": 1,
+        "position": [1400, 300],
+        "credentials": {
+          "notionApi": {
+            "id": "{{notionCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "{\"status\": \"success\", \"message\": \"Événement planifié\"}",
+          "responseCode": 200
+        },
+        "id": "respond_webhook",
+        "name": "Répondre Webhook Telegram",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1,
+        "position": [1600, 300]
+      }
+    ],
+    "connections": {
+      "Webhook Telegram": {
+        "main": [[{"node": "Agent IA Calendrier", "type": "main", "index": 0}]]
+      },
+      "Agent IA Calendrier": {
+        "main": [[{"node": "Mettre à Jour Google Calendar", "type": "main", "index": 0}]]
+      },
+      "Mettre à Jour Google Calendar": {
+        "main": [[{"node": "Alerte Slack", "type": "main", "index": 0}]]
+      },
+      "Alerte Slack": {
+        "main": [[{"node": "Générer Notes et Tâches", "type": "main", "index": 0}]]
+      },
+      "Générer Notes et Tâches": {
+        "main": [[{"node": "Mettre à Jour Note Calendrier", "type": "main", "index": 0}]]
+      },
+      "Mettre à Jour Note Calendrier": {
+        "main": [[{"node": "Ajouter Tâches à Notion", "type": "main", "index": 0}]]
+      },
+      "Ajouter Tâches à Notion": {
+        "main": [[{"node": "Répondre Webhook Telegram", "type": "main", "index": 0}]]
+      }
+    },
+    "settings": {
+      "timezone": "Europe/Paris",
+      "errorWorkflow": "error_workflow_id"
+    }
+  },
+  {
+    "name": "Email Management Workflow",
+    "nodes": [
+      {
+        "parameters": {
+          "mailbox": "INBOX",
+          "action": "markAsRead",
+          "format": "simple"
+        },
+        "id": "email_trigger",
+        "name": "Trigger Email IMAP",
+        "type": "n8n-nodes-base.emailImap",
+        "typeVersion": 1,
+        "position": [200, 300],
+        "credentials": {
+          "imapApi": {
+            "id": "{{imapCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "content": "Ce flux gère les emails entrants : étiquetage, suggestions de réponses IA, résumés Telegram, et approbation humaine avant envoi."
+        },
+        "id": "sticky_note_email",
+        "name": "Note Gestion Email",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [150, 100]
+      },
+      {
+        "parameters": {
+          "resource": "text",
+          "operation": "complete",
+          "model": "o1-mini",
+          "prompt": "Analysez l'email : {{$node['Trigger Email IMAP'].json['text']}}. Déterminez la catégorie (Urgent, Facture, Client, Autre) et suggérez une étiquette Gmail. Sortie JSON : { \"category\": \"\", \"label\": \"\" }.",
+          "temperature": 0.1,
+          "responseFormat": "json_object"
+        },
+        "id": "ai_label",
+        "name": "Étiqueter Email IA",
+        "type": "n8n-nodes-base.openAI",
+        "typeVersion": 1,
+        "position": [400, 300],
+        "credentials": {
+          "openAIApi": {
+            "id": "{{openAICredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "addLabel",
+          "messageId": "{{$node['Trigger Email IMAP'].json['messageId']}}",
+          "labels": "{{$node['Étiqueter Email IA'].json['label']}}"
+        },
+        "id": "gmail_label",
+        "name": "Ajouter Étiquette Gmail",
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 1,
+        "position": [600, 300],
+        "credentials": {
+          "gmailOAuth2Api": {
+            "id": "{{gmailCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "resource": "text",
+          "operation": "complete",
+          "model": "o1-mini",
+          "prompt": "Résumez l'email : {{$node['Trigger Email IMAP'].json['text']}} en 50 mots maximum. Sortie JSON : { \"summary\": \"\" }.",
+          "temperature": 0.7,
+          "responseFormat": "json_object"
+        },
+        "id": "ai_summary",
+        "name": "Résumer Email IA",
+        "type": "n8n-nodes-base.openAI",
+        "typeVersion": 1,
+        "position": [800, 300],
+        "credentials": {
+          "openAIApi": {
+            "id": "{{openAICredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "sendMessage",
+          "chatId": "lawyer_telegram_chat_id",
+          "message": "Résumé email : {{$node['Résumer Email IA'].json['summary']}}"
+        },
+        "id": "telegram_summary",
+        "name": "Envoyer Résumé Telegram",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1,
+        "position": [1000, 300],
+        "credentials": {
+          "telegramApi": {
+            "id": "{{telegramCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "resource": "text",
+          "operation": "complete",
+          "model": "chatgpt-4o-latest",
+          "prompt": "Rédigez une réponse professionnelle à l'email : {{$node['Trigger Email IMAP'].json['text']}}. Incluez un ton adapté au contexte. Sortie JSON : { \"response\": \"\" }.",
+          "temperature": 0.7,
+          "responseFormat": "json_object"
+        },
+        "id": "ai_response",
+        "name": "Suggérer Réponse IA",
+        "type": "n8n-nodes-base.openAI",
+        "typeVersion": 1,
+        "position": [1200, 300],
+        "credentials": {
+          "openAIApi": {
+            "id": "{{openAICredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "sendMessage",
+          "chatId": "lawyer_telegram_chat_id",
+          "message": "Réponse suggérée pour l'email de {{$node['Trigger Email IMAP'].json['from']}} : {{$node['Suggérer Réponse IA'].json['response']}}. Approuver ? Répondez 'Oui' ou 'Non'."
+        },
+        "id": "telegram_approve",
+        "name": "Demander Approbation Telegram",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1,
+        "position": [1400, 300],
+        "credentials": {
+          "telegramApi": {
+            "id": "{{telegramCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "path": "telegram-approve",
+          "httpMethod": "POST",
+          "respondTo": "lastNode",
+          "responseCode": 200,
+          "responseData": "Approbation reçue"
+        },
+        "id": "telegram_approve_trigger",
+        "name": "Webhook Approbation Telegram",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 1,
+        "position": [1600, 300],
+        "credentials": {
+          "webhook": {
+            "id": "{{telegramWebhookCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "string": [
+              {
+                "value1": "{{$node['Webhook Approbation Telegram'].json['message']}}",
+                "operation": "isEqual",
+                "value2": "Oui"
+              }
+            ]
+          }
+        },
+        "id": "if_approve",
+        "name": "Vérifier Approbation",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 1,
+        "position": [1800, 300]
+      },
+      {
+        "parameters": {
+          "fromEmail": "cabinet@avocat.com",
+          "toEmail": "{{$node['Trigger Email IMAP'].json['from']}}",
+          "subject": "Re: {{$node['Trigger Email IMAP'].json['subject']}}",
+          "emailFormat": "text",
+          "text": "{{$node['Suggérer Réponse IA'].json['response']}}"
+        },
+        "id": "send_response",
+        "name": "Envoyer Réponse Gmail",
+        "type": "n8n-nodes-base.sendEmail",
+        "typeVersion": 1,
+        "position": [2000, 200],
+        "credentials": {
+          "smtpApi": {
+            "id": "{{smtpCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "{\"status\": \"success\"}",
+          "responseCode": 200
+        },
+        "id": "respond_webhook",
+        "name": "Répondre Webhook Approbation",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1,
+        "position": [2000, 400]
+      }
+    ],
+    "connections": {
+      "Trigger Email IMAP": {
+        "main": [[{"node": "Étiqueter Email IA", "type": "main", "index": 0}]]
+      },
+      "Étiqueter Email IA": {
+        "main": [[{"node": "Ajouter Étiquette Gmail", "type": "main", "index": 0}]]
+      },
+      "Ajouter Étiquette Gmail": {
+        "main": [[{"node": "Résumer Email IA", "type": "main", "index": 0}]]
+      },
+      "Résumer Email IA": {
+        "main": [[{"node": "Envoyer Résumé Telegram", "type": "main", "index": 0}]]
+      },
+      "Envoyer Résumé Telegram": {
+        "main": [[{"node": "Suggérer Réponse IA", "type": "main", "index": 0}]]
+      },
+      "Suggérer Réponse IA": {
+        "main": [[{"node": "Demander Approbation Telegram", "type": "main", "index": 0}]]
+      },
+      "Demander Approbation Telegram": {
+        "main": [[{"node": "Webhook Approbation Telegram", "type": "main", "index": 0}]]
+      },
+      "Webhook Approbation Telegram": {
+        "main": [[{"node": "Vérifier Approbation", "type": "main", "index": 0}]]
+      },
+      "Vérifier Approbation": {
+        "main": [
+          [{"node": "Envoyer Réponse Gmail", "type": "main", "index": 0}],
+          [{"node": "Répondre Webhook Approbation", "type": "main", "index": 0}]
+        ]
+      },
+      "Envoyer Réponse Gmail": {
+        "main": [[{"node": "Répondre Webhook Approbation", "type": "main", "index": 0}]]
+      }
+    },
+    "settings": {
+      "timezone": "Europe/Paris",
+      "errorWorkflow": "error_workflow_id"
+    }
+  },
+  {
+    "name": "Task Management Workflow",
+    "nodes": [
+      {
+        "parameters": {
+          "mailbox": "INBOX",
+          "action": "markAsRead",
+          "format": "simple"
+        },
+        "id": "email_trigger",
+        "name": "Trigger Email IMAP",
+        "type": "n8n-nodes-base.emailImap",
+        "typeVersion": 1,
+        "position": [200, 300],
+        "credentials": {
+          "imapApi": {
+            "id": "{{imapCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "triggerInterval": "cron",
+          "cronExpression": "0 8 * * MON-FRI",
+          "timeZone": "Europe/Paris"
+        },
+        "id": "schedule_trigger",
+        "name": "Trigger Planifié",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1,
+        "position": [200, 500]
+      },
+      {
+        "parameters": {
+          "content": "Ce flux crée des tâches à partir d'emails ou d'événements calendrier, définit des rappels, et s'intègre à Notion/Clockify/Slack."
+        },
+        "id": "sticky_note_task",
+        "name": "Note Gestion Tâches",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [150, 100]
+      },
+      {
+        "parameters": {
+          "resource": "text",
+          "operation": "complete",
+          "model": "o1-mini",
+          "prompt": "Analysez l'email : {{$node['Trigger Email IMAP'].json['text']}}. Identifiez les tâches potentielles et fournissez une liste JSON : { \"tasks\": [{ \"description\": \"\", \"due_date\": \"\" }] }.",
+          "temperature": 0.1,
+          "responseFormat": "json_object"
+        },
+        "id": "ai_tasks_email",
+        "name": "Extraire Tâches Email IA",
+        "type": "n8n-nodes-base.openAI",
+        "typeVersion": 1,
+        "position": [400, 300],
+        "credentials": {
+          "openAIApi": {
+            "id": "{{openAICredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "getAll",
+          "calendarId": "primary",
+          "timeMin": "{{new Date().toISOString()}}",
+          "timeMax": "{{new Date(Date.now() + 7*24*60*60*1000).toISOString()}}"
+        },
+        "id": "get_calendar",
+        "name": "Récupérer Événements Calendrier",
+        "type": "n8n-nodes-base.googleCalendar",
+        "typeVersion": 1,
+        "position": [400, 500],
+        "credentials": {
+          "googleCalendarOAuth2Api": {
+            "id": "{{googleCalendarCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "resource": "text",
+          "operation": "complete",
+          "model": "o1-mini",
+          "prompt": "Analysez les événements calendrier : {{$node['Récupérer Événements Calendrier'].json}}. Identifiez les tâches potentielles et fournissez une liste JSON : { \"tasks\": [{ \"description\": \"\", \"due_date\": \"\" }] }.",
+          "temperature": 0.1,
+          "responseFormat": "json_object"
+        },
+        "id": "ai_tasks_calendar",
+        "name": "Extraire Tâches Calendrier IA",
+        "type": "n8n-nodes-base.openAI",
+        "typeVersion": 1,
+        "position": [600, 500],
+        "credentials": {
+          "openAIApi": {
+            "id": "{{openAICredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "mode": "append",
+          "combineBy": "allPossibleCombinations",
+          "input1Field": "tasks",
+          "input2Field": "tasks"
+        },
+        "id": "merge_tasks",
+        "name": "Fusionner Tâches",
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 1,
+        "position": [800, 400],
+        "inputs": [
+          {"node": "Extraire Tâches Email IA", "type": "main", "index": 0},
+          {"node": "Extraire Tâches Calendrier IA", "type": "main", "index": 0}
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "create",
+          "databaseId": "your_notion_database_id",
+          "properties": {
+            "Tâche": "{{$node['Fusionner Tâches'].json['tasks'].map(t => t.description).join(', ')}}",
+            "Date d'Échéance": "{{$node['Fusionner Tâches'].json['tasks'][0].due_date}}"
+          }
+        },
+        "id": "notion_tasks",
+        "name": "Ajouter Tâches à Notion",
+        "type": "n8n-nodes-base.notion",
+        "typeVersion": 1,
+        "position": [1000, 400],
+        "credentials": {
+          "notionApi": {
+            "id": "{{notionCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "create",
+          "projectId": "your_clockify_project_id",
+          "name": "{{$node['Fusionner Tâches'].json['tasks'][0].description}}",
+          "start": "{{new Date().toISOString()}}"
+        },
+        "id": "clockify_tasks",
+        "name": "Ajouter Tâches à Clockify",
+        "type": "n8n-nodes-base.clockify",
+        "typeVersion": 1,
+        "position": [1200, 400],
+        "credentials": {
+          "clockifyApi": {
+            "id": "{{clockifyCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "channel": "law-firm-channel",
+          "text": "Nouvelle tâche ajoutée : {{$node['Fusionner Tâches'].json['tasks'][0].description}}, échéance : {{$node['Fusionner Tâches'].json['tasks'][0].due_date}}."
+        },
+        "id": "slack_notify",
+        "name": "Notifier Slack",
+        "type": "n8n-nodes-base.slack",
+        "typeVersion": 1,
+        "position": [1400, 400],
+        "credentials": {
+          "slackApi": {
+            "id": "{{slackCredentials}}"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Trigger Email IMAP": {
+        "main": [[{"node": "Extraire Tâches Email IA", "type": "main", "index": 0}]]
+      },
+      "Trigger Planifié": {
+        "main": [[{"node": "Récupérer Événements Calendrier", "type": "main", "index": 0}]]
+      },
+      "Extraire Tâches Email IA": {
+        "main": [[{"node": "Fusionner Tâches", "type": "main", "index": 0}]]
+      },
+      "Récupérer Événements Calendrier": {
+        "main": [[{"node": "Extraire Tâches Calendrier IA", "type": "main", "index": 0}]]
+      },
+      "Extraire Tâches Calendrier IA": {
+        "main": [[{"node": "Fusionner Tâches", "type": "main", "index": 1}]]
+      },
+      "Fusionner Tâches": {
+        "main": [[{"node": "Ajouter Tâches à Notion", "type": "main", "index": 0}]]
+      },
+      "Ajouter Tâches à Notion": {
+        "main": [[{"node": "Ajouter Tâches à Clockify", "type": "main", "index": 0}]]
+      },
+      "Ajouter Tâches à Clockify": {
+        "main": [[{"node": "Notifier Slack", "type": "main", "index": 0}]]
+      }
+    },
+    "settings": {
+      "timezone": "Europe/Paris",
+      "errorWorkflow": "error_workflow_id"
+    }
+  },
+  {
+    "name": "Document Management Workflow",
+    "nodes": [
+      {
+        "parameters": {
+          "triggerInterval": "cron",
+          "cronExpression": "0 2 * * *",
+          "timeZone": "Europe/Paris"
+        },
+        "id": "schedule_trigger",
+        "name": "Trigger Planifié",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1,
+        "position": [200, 300]
+      },
+      {
+        "parameters": {
+          "content": "Ce flux organise les documents Google Drive, génère des modèles, sauvegarde les flux n8n, et documente dans Notion."
+        },
+        "id": "sticky_note_doc",
+        "name": "Note Gestion Documents",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [150, 100]
+      },
+      {
+        "parameters": {
+          "operation": "create",
+          "name": "Modèle Contrat Client",
+          "content": "<p>CONTRAT DE SERVICE JURIDIQUE</p><p>Client : {{$json.client_name}}</p><p>Date : {{new Date().toISOString()}}</p><p>Services : {{$json.services}}</p>"
+        },
+        "id": "google_docs_template",
+        "name": "Créer Modèle Google Docs",
+        "type": "n8n-nodes-base.googleDocs",
+        "typeVersion": 1,
+        "position": [400, 300],
+        "credentials": {
+          "googleDocsOAuth2Api": {
+            "id": "{{googleDocsCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "uploadFile",
+          "fileName": "backup_n8n_{{new Date().toISOString()}}.json",
+          "fileContent": "{{JSON.stringify($workflow)}}",
+          "parentFolderId": "your_google_drive_backup_folder_id"
+        },
+        "id": "google_drive_backup",
+        "name": "Sauvegarder Flux n8n Google Drive",
+        "type": "n8n-nodes-base.googleDrive",
+        "typeVersion": 1,
+        "position": [600, 300],
+        "credentials": {
+          "googleDriveOAuth2Api": {
+            "id": "{{googleDriveCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "create",
+          "repo": "your_github_repo",
+          "path": "n8n_backups/backup_{{new Date().toISOString()}}.json",
+          "content": "{{JSON.stringify($workflow)}}"
+        },
+        "id": "github_backup",
+        "name": "Sauvegarder Flux n8n GitHub",
+        "type": "n8n-nodes-base.github",
+        "typeVersion": 1,
+        "position": [800, 300],
+        "credentials": {
+          "githubApi": {
+            "id": "{{githubCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "resource": "text",
+          "operation": "complete",
+          "model": "o1-mini",
+          "prompt": "Générez une documentation pour le flux n8n : {{JSON.stringify($workflow)}}. Incluez le nom du flux, une description de chaque nœud, et les connexions. Sortie JSON : { \"documentation\": { \"workflow_name\": \"\", \"nodes\": [{ \"name\": \"\", \"description\": \"\" }], \"connections\": [] } }.",
+          "temperature": 0.1,
+          "responseFormat": "json_object"
+        },
+        "id": "ai_documentation",
+        "name": "Générer Documentation IA",
+        "type": "n8n-nodes-base.openAI",
+        "typeVersion": 1,
+        "position": [1000, 300],
+        "credentials": {
+          "openAIApi": {
+            "id": "{{openAICredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "create",
+          "parentId": "your_notion_page_id",
+          "title": "{{$node['Générer Documentation IA'].json['documentation']['workflow_name']}}",
+          "content": "{{$node['Générer Documentation IA'].json['documentation']}}"
+        },
+        "id": "notion_doc",
+        "name": "Ajouter Documentation Notion",
+        "type": "n8n-nodes-base.notion",
+        "typeVersion": 1,
+        "position": [1200, 300],
+        "credentials": {
+          "notionApi": {
+            "id": "{{notionCredentials}}"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Trigger Planifié": {
+        "main": [[{"node": "Créer Modèle Google Docs", "type": "main", "index": 0}]]
+      },
+      "Créer Modèle Google Docs": {
+        "main": [[{"node": "Sauvegarder Flux n8n Google Drive", "type": "main", "index": 0}]]
+      },
+      "Sauvegarder Flux n8n Google Drive": {
+        "main": [[{"node": "Sauvegarder Flux n8n GitHub", "type": "main", "index": 0}]]
+      },
+      "Sauvegarder Flux n8n GitHub": {
+        "main": [[{"node": "Générer Documentation IA", "type": "main", "index": 0}]]
+      },
+      "Générer Documentation IA": {
+        "main": [[{"node": "Ajouter Documentation Notion", "type": "main", "index": 0}]]
+      }
+    },
+    "settings": {
+      "timezone": "Europe/Paris",
+      "errorWorkflow": "error_workflow_id"
+    }
+  },
+  {
+    "name": "Billing Workflow",
+    "nodes": [
+      {
+        "parameters": {
+          "triggerInterval": "cron",
+          "cronExpression": "0 9 * * MON",
+          "timeZone": "Europe/Paris"
+        },
+        "id": "schedule_trigger",
+        "name": "Trigger Planifié",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1,
+        "position": [200, 300]
+      },
+      {
+        "parameters": {
+          "content": "Ce flux génère des factures QuickBooks, les enregistre dans Google Drive, notifie via Telegram, et envoie au client par email."
+        },
+        "id": "sticky_note_billing",
+        "name": "Note Gestion Facturation",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [150, 100]
+      },
+      {
+        "parameters": {
+          "operation": "getAll",
+          "baseId": "your_airtable_base_id",
+          "tableName": "Clients",
+          "filters": {
+            "fields": ["Nom", "Email", "Type de Dossier", "Facturation"]
+          }
+        },
+        "id": "airtable_clients",
+        "name": "Récupérer Clients Airtable",
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 1,
+        "position": [400, 300],
+        "credentials": {
+          "airtableApi": {
+            "id": "{{airtableCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "try {\n  const clients = $node['Récupérer Clients Airtable'].json;\n  return clients.map(client => ({\n    json: {\n      client_name: client.Nom,\n      email: client.Email,\n      service_description: `Services juridiques - ${client['Type de Dossier']}`,\n      amount: client.Facturation || 500,\n      invoice_date: new Date().toISOString()\n    }\n  }));\n} catch (error) {\n  throw new Error(`Erreur lors de la génération des factures : ${error.message}`);\n}"
+        },
+        "id": "code_invoices",
+        "name": "Générer Données Factures",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [600, 300]
+      },
+      {
+        "parameters": {
+          "operation": "create",
+          "customerEmail": "{{$node['Générer Données Factures'].json['email']}}",
+          "lineItems": [
+            {
+              "description": "{{$node['Générer Données Factures'].json['service_description']}}",
+              "amount": "{{$node['Générer Données Factures'].json['amount']}}"
+            }
+          ],
+          "dueDate": "{{new Date(Date.now() + 30*24*60*60*1000).toISOString()}}"
+        },
+        "id": "quickbooks_invoice",
+        "name": "Créer Facture QuickBooks",
+        "type": "n8n-nodes-base.quickbooks",
+        "typeVersion": 1,
+        "position": [800, 300],
+        "credentials": {
+          "quickbooksOAuth2Api": {
+            "id": "{{quickbooksCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "uploadFile",
+          "fileName": "Facture_{{$node['Générer Données Factures'].json['client_name']}}_{{$node['Générer Données Factures'].json['invoice_date']}}.pdf",
+          "fileContent": "{{$node['Créer Facture QuickBooks'].json['pdf']}}",
+          "parentFolderId": "{{$node['Créer Dossier Google Drive'].json['id']}}"
+        },
+        "id": "google_drive_invoice",
+        "name": "Enregistrer Facture Google Drive",
+        "type": "n8n-nodes-base.googleDrive",
+        "typeVersion": 1,
+        "position": [1000, 300],
+        "credentials": {
+          "googleDriveOAuth2Api": {
+            "id": "{{googleDriveCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "sendMessage",
+          "chatId": "lawyer_telegram_chat_id",
+          "message": "Nouvelle facture générée pour {{$node['Générer Données Factures'].json['client_name']}} : {{$node['Générer Données Factures'].json['service_description']}} ({{$node['Générer Données Factures'].json['amount']}}€)."
+        },
+        "id": "telegram_notify",
+        "name": "Notifier Telegram",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1,
+        "position": [1200, 300],
+        "credentials": {
+          "telegramApi": {
+            "id": "{{telegramCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "fromEmail": "cabinet@avocat.com",
+          "toEmail": "{{$node['Générer Données Factures'].json['email']}}",
+          "subject": "Facture pour Services Juridiques",
+          "emailFormat": "html",
+          "html": "<p>Cher {{$node['Générer Données Factures'].json['client_name']}},</p><p>Veuillez trouver ci-joint votre facture pour {{$  {{$node['Générer Données Factures'].json['service_description']}} ({{$node['Générer Données Factures'].json['amount']}}€). Consultez le document en pièce jointe.</p><p>Cordialement,<br>Votre Cabinet d'Avocat</p>",
+          "attachments": [
+            {
+              "name": "Facture.pdf",
+              "data": "{{$node['Créer Facture QuickBooks'].json['pdf']}}"
+            }
+          ]
+        },
+        "id": "send_invoice",
+        "name": "Envoyer Facture Gmail",
+        "type": "n8n-nodes-base.sendEmail",
+        "typeVersion": 1,
+        "position": [1400, 300],
+        "credentials": {
+          "smtpApi": {
+            "id": "{{smtpCredentials}}"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Trigger Planifié": {
+        "main": [[{"node": "Récupérer Clients Airtable", "type": "main", "index": 0}]]
+      },
+      "Récupérer Clients Airtable": {
+        "main": [[{"node": "Générer Données Factures", "type": "main", "index": 0}]]
+      },
+      "Générer Données Factures": {
+        "main": [[{"node": "Créer Facture QuickBooks", "type": "main", "index": 0}]]
+      },
+      "Créer Facture QuickBooks": {
+        "main": [[{"node": "Enregistrer Facture Google Drive", "type": "main", "index": 0}]]
+      },
+      "Enregistrer Facture Google Drive": {
+        "main": [[{"node": "Notifier Telegram", "type": "main", "index": 0}]]
+      },
+      "Notifier Telegram": {
+        "main": [[{"node": "Envoyer Facture Gmail", "type": "main", "index": 0}]]
+      }
+    },
+    "settings": {
+      "timezone": "Europe/Paris",
+      "errorWorkflow": "error_workflow_id"
+    }
+  },
+  {
+    "name": "Client Communication Workflow",
+    "nodes": [
+      {
+        "parameters": {
+          "triggerInterval": "cron",
+          "cronExpression": "0 8 * * *",
+          "timeZone": "Europe/Paris"
+        },
+        "id": "schedule_trigger",
+        "name": "Trigger Planifié",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1,
+        "position": [200, 300]
+      },
+      {
+        "parameters": {
+          "content": "Ce flux envoie des emails de bienvenue, confirmations, rappels, et mises à jour de dossiers aux clients."
+        },
+        "id": "sticky_note_comm",
+        "name": "Note Communication Client",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [150, 100]
+      },
+      {
+        "parameters": {
+          "operation": "getAll",
+          "baseId": "your_airtable_base_id",
+          "tableName": "Clients",
+          "filters": {
+            "fields": ["Nom", "Email", "Type de Dossier", "Statut"]
+          }
+        },
+        "id": "airtable_clients",
+        "name": "Récupérer Clients Airtable",
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 1,
+        "position": [400, 300],
+        "credentials": {
+          "airtableApi": {
+            "id": "{{airtableCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "getAll",
+          "calendarId": "primary",
+          "timeMin": "{{new Date().toISOString()}}",
+          "timeMax": "{{new Date(Date.now() + 24*60*60*1000).toISOString()}}"
+        },
+        "id": "get_calendar",
+        "name": "Récupérer Événements Calendrier",
+        "type": "n8n-nodes-base.googleCalendar",
+        "typeVersion": 1,
+        "position": [600, 300],
+        "credentials": {
+          "googleCalendarOAuth2Api": {
+            "id": "{{googleCalendarCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "fromEmail": "cabinet@avocat.com",
+          "toEmail": "{{$node['Récupérer Clients Airtable'].json['Email']}}",
+          "subject": "Bienvenue dans Notre Cabinet",
+          "emailFormat": "html",
+          "html": "<p>Cher {{$node['Récupérer Clients Airtable'].json['Nom']}},</p><p>Bienvenue dans notre cabinet d'avocat. Nous sommes ravis de vous accompagner pour votre dossier {{$node['Récupérer Clients Airtable'].json['Type de Dossier']}}. Vous recevrez bientôt une confirmation de rendez-vous.</p><p>Cordialement,<br>Votre Cabinet d'Avocat</p>"
+        },
+        "id": "welcome_email",
+        "name": "Envoyer Email Bienvenue",
+        "type": "n8n-nodes-base.sendEmail",
+        "typeVersion": 1,
+        "position": [800, 200],
+        "credentials": {
+          "smtpApi": {
+            "id": "{{smtpCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "fromEmail": "cabinet@avocat.com",
+          "toEmail": "{{$node['Récupérer Événements Calendrier'].json['attendees'][0]}}",
+          "subject": "Rappel : Votre Rendez-Vous",
+          "emailFormat": "html",
+          "html": "<p>Cher Client,</p><p>Ceci est un rappel pour votre rendez-vous prévu le {{$node['Récupérer Événements Calendrier'].json['startDateTime']}}. Lien de la réunion : {{$node['Récupérer Événements Calendrier'].json['hangoutsLink']}}.</p><p>Cordialement,<br>Votre Cabinet d'Avocat</p>"
+        },
+        "id": "reminder_email",
+        "name": "Envoyer Rappel Rendez-Vous",
+        "type": "n8n-nodes-base.sendEmail",
+        "typeVersion": 1,
+        "position": [800, 400],
+        "credentials": {
+          "smtpApi": {
+            "id": "{{smtpCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "resource": "text",
+          "operation": "complete",
+          "model": "o1-mini",
+          "prompt": "Générez une mise à jour concise pour le client {{$node['Récupérer Clients Airtable'].json['Nom']}} concernant le statut de son dossier {{$node['Récupérer Clients Airtable'].json['Statut']}}. Sortie JSON : { \"update\": \"\" }.",
+          "temperature": 0.7,
+          "responseFormat": "json_object"
+        },
+        "id": "ai_case_update",
+        "name": "Générer Mise à Jour Dossier",
+        "type": "n8n-nodes-base.openAI",
+        "typeVersion": 1,
+        "position": [1000, 300],
+        "credentials": {
+          "openAIApi": {
+            "id": "{{openAICredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "fromEmail": "cabinet@avocat.com",
+          "toEmail": "{{$node['Récupérer Clients Airtable'].json['Email']}}",
+          "subject": "Mise à Jour de Votre Dossier",
+          "emailFormat": "html",
+          "html": "<p>Cher {{$node['Récupérer Clients Airtable'].json['Nom']}},</p><p>{{$node['Générer Mise à Jour Dossier'].json['update']}}</p><p>Cordialement,<br>Votre Cabinet d'Avocat</p>"
+        },
+        "id": "case_update_email",
+        "name": "Envoyer Mise à Jour Dossier",
+        "type": "n8n-nodes-base.sendEmail",
+        "typeVersion": 1,
+        "position": [1200, 300],
+        "credentials": {
+          "smtpApi": {
+            "id": "{{smtpCredentials}}"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Trigger Planifié": {
+        "main": [[{"node": "Récupérer Clients Airtable", "type": "main", "index": 0}]]
+      },
+      "Récupérer Clients Airtable": {
+        "main": [
+          [{"node": "Envoyer Email Bienvenue", "type": "main", "index": 0}],
+          [{"node": "Générer Mise à Jour Dossier", "type": "main", "index": 0}]
+        ]
+      },
+      "Récupérer Événements Calendrier": {
+        "main": [[{"node": "Envoyer Rappel Rendez-Vous", "type": "main", "index": 0}]]
+      },
+      "Générer Mise à Jour Dossier": {
+        "main": [[{"node": "Envoyer Mise à Jour Dossier", "type": "main", "index": 0}]]
+      }
+    },
+    "settings": {
+      "timezone": "Europe/Paris",
+      "errorWorkflow": "error_workflow_id"
+    }
+  },
+  {
+    "name": "Backup Workflow",
+    "nodes": [
+      {
+        "parameters": {
+          "triggerInterval": "cron",
+          "cronExpression": "0 3 * * *",
+          "timeZone": "Europe/Paris"
+        },
+        "id": "schedule_trigger",
+        "name": "Trigger Planifié",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1,
+        "position": [200, 300]
+      },
+      {
+        "parameters": {
+          "content": "Ce flux sauvegarde les configurations n8n dans Google Drive et GitHub, et génère une documentation dans Notion."
+        },
+        "id": "sticky_note_backup",
+        "name": "Note Sauvegarde",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [150, 100]
+      },
+      {
+        "parameters": {
+          "operation": "uploadFile",
+          "fileName": "backup_n8n_{{new Date().toISOString()}}.json",
+          "fileContent": "{{JSON.stringify($workflow)}}",
+          "parentFolderId": "your_google_drive_backup_folder_id"
+        },
+        "id": "google_drive_backup",
+        "name": "Sauvegarder Flux n8n Google Drive",
+        "type": "n8n-nodes-base.googleDrive",
+        "typeVersion": 1,
+        "position": [400, 300],
+        "credentials": {
+          "googleDriveOAuth2Api": {
+            "id": "{{googleDriveCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "create",
+          "repo": "your_github_repo",
+          "path": "n8n_backups/backup_{{new Date().toISOString()}}.json",
+          "content": "{{JSON.stringify($workflow)}}"
+        },
+        "id": "github_backup",
+        "name": "Sauvegarder Flux n8n GitHub",
+        "type": "n8n-nodes-base.github",
+        "typeVersion": 1,
+        "position": [600, 300],
+        "credentials": {
+          "githubApi": {
+            "id": "{{githubCredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "resource": "text",
+          "operation": "complete",
+          "model": "o1-mini",
+          "prompt": "Générez une documentation pour le flux n8n : {{JSON.stringify($workflow)}}. Incluez le nom du flux, une description de chaque nœud, et les connexions. Sortie JSON : { \"documentation\": { \"workflow_name\": \"\", \"nodes\": [{ \"name\": \"\", \"description\": \"\" }], \"connections\": [] } }.",
+          "temperature": 0.1,
+          "responseFormat": "json_object"
+        },
+        "id": "ai_documentation",
+        "name": "Générer Documentation IA",
+        "type": "n8n-nodes-base.openAI",
+        "typeVersion": 1,
+        "position": [800, 300],
+        "credentials": {
+          "openAIApi": {
+            "id": "{{openAICredentials}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "create",
+          "parentId": "your_notion_page_id",
+          "title": "{{$node['Générer Documentation IA'].json['documentation']['workflow_name']}}",
+          "content": "{{$node['Générer Documentation IA'].json['documentation']}}"
+        },
+        "id": "notion_doc",
+        "name": "Ajouter Documentation Notion",
+        "type": "n8n-nodes-base.notion",
+        "typeVersion": 1,
+        "position": [1000, 300],
+        "credentials": {
+          "notionApi": {
+            "id": "{{notionCredentials}}"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Trigger Planifié": {
+        "main": [[{"node": "Sauvegarder Flux n8n Google Drive", "type": "main", "index": 0}]]
+      },
+      "Sauvegarder Flux n8n Google Drive": {
+        "main": [[{"node": "Sauvegarder Flux n8n GitHub", "type": "main", "index": 0}]]
+      },
+      "Sauvegarder Flux n8n GitHub": {
+        "main": [[{"node": "Générer Documentation IA", "type": "main", "index": 0}]]
+      },
+      "Générer Documentation IA": {
+        "main": [[{"node": "Ajouter Documentation Notion", "type": "main", "index": 0}]]
+      }
+    },
+    "settings": {
+      "timezone": "Europe/Paris",
+      "errorWorkflow": "error_workflow_id"
+    }
+  }
+]
